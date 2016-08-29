@@ -469,11 +469,11 @@ module Terminal
     end
 
     it "should only increase column size for multi-column if it is unavoidable" do
-      @table << [12345,2,3]
+      @table << [12345, {:value => 12345, :colspan => 2}]
       @table << [{:value => 123456789, :colspan => 2}, 4]
       @table.render.should == <<-EOF.deindent
         +-------+---+---+
-        | 12345 | 2 | 3 |
+        | 12345 | 12345 |
         | 123456789 | 4 |
         +-------+---+---+
       EOF
