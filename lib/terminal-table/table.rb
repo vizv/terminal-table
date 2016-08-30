@@ -17,6 +17,7 @@ module Terminal
       self.headings = options.fetch :headings, []
       self.rows = options.fetch :rows, []
       self.title = options.fetch :title, nil
+      self.widths = options.fetch :widths, nil
       yield_or_eval(&block) if block
 
       style.on_change(:width) { require_column_widths_recalc }
@@ -166,6 +167,11 @@ module Terminal
     def title=(title)
       @title = title
       require_column_widths_recalc
+    end
+
+    def widths=(width)
+      @width = width
+      recalc_column_widths Row.new(self, [title_cell_options])
     end
 
     ##
