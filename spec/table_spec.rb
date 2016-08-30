@@ -292,15 +292,15 @@ module Terminal
       @table << ['b', 2]
       @table << ['c', 3]
       @table.render.should == <<-EOF.deindent
-        +------+------+
-        | Char | Num  |
-        +------+------+
+        +-------+-----+
+        | Char  | Num |
+        +-------+-----+
         | 2nd heading |
-        +------+------+
-        | a    | 1    |
-        | b    | 2    |
-        | c    | 3    |
-        +------+------+
+        +-------+-----+
+        | a     | 1   |
+        | b     | 2   |
+        | c     | 3   |
+        +-------+-----+
       EOF
     end
 
@@ -458,13 +458,13 @@ module Terminal
       @table.headings = ['one', 'two', 'three']
       @table.rows = [['a', 1, 2], ['b', 3, 4], ['c', {:value => "joined that is very very long", :colspan => 2,:alignment => :center}]]
       @table.render.should == <<-EOF.deindent
-        +-----+---------------+---------------+
-        | one | two           | three         |
-        +-----+---------------+---------------+
-        | a   | 1             | 2             |
-        | b   | 3             | 4             |
+        +-----+--------------+----------------+
+        | one | two          | three          |
+        +-----+--------------+----------------+
+        | a   | 1            | 2              |
+        | b   | 3            | 4              |
         | c   | joined that is very very long |
-        +-----+---------------+---------------+
+        +-----+--------------+----------------+
       EOF
     end
 
@@ -479,6 +479,16 @@ module Terminal
       EOF
     end
 
+    it "should handle extreme case of colspans" do
+      @table << [12345,2,3]
+      @table << [{:value => 123456789, :colspan => 2}, 4]
+      @table.render.should == <<-EOF.deindent
+        +-------+---+---+
+        | 12345 | 2 | 3 |
+        | 123456789 | 4 |
+        +-------+---+---+
+      EOF
+    end
 
     it "should handle colspan 1" do
       @table.headings = ['name', { :value => 'values', :colspan => 1}]
@@ -527,13 +537,13 @@ module Terminal
       end
 
       @table.render.should == <<-EOF.deindent
-        +--------+----+----+-------+-------+-----+-----+
-        | name   |  Values |  Other values |  Column 3 |
-        +--------+----+----+-------+-------+-----+-----+
-        | row #1 | 0  | 1  | 2     | 3     | 4   | 5   |
-        | row #2 | 6  | 7  | 8     | 9     | 10  | 11  |
-        | row #3 | 12 | 13 | 14    | 15    | 16  | 17  |
-        +--------+----+----+-------+-------+-----+-----+
+        +--------+----+----+-------+------+-----+----+
+        | name   |  Values | Other values | Column 3 |
+        +--------+----+----+-------+------+-----+----+
+        | row #1 | 0  | 1  | 2     | 3    | 4   | 5  |
+        | row #2 | 6  | 7  | 8     | 9    | 10  | 11 |
+        | row #3 | 12 | 13 | 14    | 15   | 16  | 17 |
+        +--------+----+----+-------+------+-----+----+
       EOF
     end
 

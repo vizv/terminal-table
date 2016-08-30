@@ -1,4 +1,5 @@
 require 'unicode/display_width'
+require 'pp'
 
 module Terminal
   class Table
@@ -10,6 +11,8 @@ module Terminal
     # Generates a ASCII table with the given _options_.
 
     def initialize options = {}, &block
+      @headings = []
+      @rows = []
       @column_widths = []
       self.style = options.fetch :style, {}
       self.headings = options.fetch :headings, []
@@ -35,8 +38,8 @@ module Terminal
     def add_row array
       row = array == :separator ? Separator.new(self) : Row.new(self, array)
       @rows << row
-      recalc_column_widths row
-    end
+      # STDERR.puts "\nDBG: add row - #{array.pretty_inspect}"
+      recalc_column_widths row end
     alias :<< :add_row
 
     ##
@@ -99,7 +102,7 @@ module Terminal
     # Return total number of columns available.
 
     def number_of_columns
-      headings_with_rows.map { |r| r.cells.size }.max
+      headings_with_rows.map { |r| r.number_of_columns }.max || 0
     end
 
     ##
@@ -109,6 +112,7 @@ module Terminal
       arrays = [arrays] unless arrays.first.is_a?(Array)
       @headings = arrays.map do |array|
         row = Row.new(self, array)
+        # STDERR.puts "\nDBG: set headings - #{array.pretty_inspect}"
         recalc_column_widths row
         row
       end
@@ -162,6 +166,7 @@ module Terminal
 
     def title=(title)
       @title = title
+      # STDERR.puts "\nDBG: set title - #{title}"
       recalc_column_widths Row.new(self, [title_cell_options])
     end
 
@@ -197,23 +202,116 @@ module Terminal
 
     def recalc_column_widths row
       return if row.is_a? Separator
-      i = 0
-      row.cells.each do |cell|
-        colspan = cell.colspan
-        cell_value = cell.value_for_column_width_recalc
-        colspan.downto(1) do |j|
-          cell_length = Unicode::DisplayWidth.of(cell_value.to_s)
-          if colspan > 1
-            spacing_length = cell_spacing * (colspan - 1)
-            length_in_columns = (cell_length - spacing_length)
-            cell_length = (length_in_columns.to_f / colspan).ceil
-          end
-          if @column_widths[i].to_i < cell_length
-            @column_widths[i] = cell_length
-          end
-          i = i + 1
+
+      # prepare rows
+      all_rows = headings_with_rows
+      all_rows << Row.new(self, [title_cell_options]) unless @title.nil?
+
+      # DP states, dp[colspan][index][split_offset] => column_width.
+      dp = []
+
+      # prepare initial value for DP.
+      all_rows.each do |row|
+        index = 0
+        row.cells.each do |cell|
+          cell_value = cell.value_for_column_width_recalc
+          cell_width = Unicode::DisplayWidth.of(cell_value.to_s)
+          colspan = cell.colspan
+
+          # find column width from each single cell.
+          dp[colspan] ||= []
+          dp[colspan][index] ||= [0]        # add a fake cell with length 0.
+          dp[colspan][index][colspan] ||= 0 # initialize column length to 0.
+
+          # the last index `colspan` means width of the single column (split
+          # at end of each column), not a width made up of multiple columns.
+          single_column_length = [cell_width, dp[colspan][index][colspan]].max
+          dp[colspan][index][colspan] = single_column_length
+
+          index += colspan
         end
       end
+
+      # run DP.
+      n_cols = number_of_columns
+      return if n_cols == 0
+      # STDERR.puts "DBG: n_cols = #{n_cols}"
+      space_width = cell_spacing
+      (1..n_cols).each do |colspan|
+        dp[colspan] ||= []
+        (0..n_cols-colspan).each do |index|
+          dp[colspan][index] ||= [1]
+          (1...colspan).each do |offset|
+            # processed level became reverse map from width => [offset, ...].
+            left_colspan = offset
+            left_index = index
+            left_width = dp[left_colspan][left_index].keys.first
+
+            right_colspan = colspan - left_colspan
+            right_index = index + offset
+            right_width = dp[right_colspan][right_index].keys.first
+
+            dp[colspan][index][offset] = left_width + right_width + space_width
+          end
+
+          # reverse map it for resolution (max width and short offset first).
+          rmap = {}
+          dp[colspan][index].each_with_index do |width, offset|
+            rmap[width] ||= []
+            rmap[width] << offset
+          end
+
+          # sort reversely and store it back.
+          dp[colspan][index] = rmap.sort.reverse.to_h
+
+          # STDERR.puts "colspan: #{colspan}, index: #{index}"
+          # STDERR.puts dp[colspan][index]
+        end
+      end
+
+      resolve = -> (colspan, index = 0, additional_width = 0) do
+        # STDERR.puts "DBG resolve: #{colspan}, #{index}"
+        current = dp[colspan][index]
+        full_width = current.keys.first + additional_width
+
+        # stop if reaches the bottom level.
+        # STDERR.puts "DBG result: #{index}: #{full_width}" if colspan == 1
+        return @column_widths[index] = full_width if colspan == 1
+
+        # choose best split offset for partition, or second best result
+        # if first one is not dividable.
+        candidate_offsets = current.collect(&:last).flatten
+        offset = candidate_offsets[0]
+        offset = candidate_offsets[1] if offset == colspan
+
+        # prepare for next round.
+        left_colspan = offset
+        left_index = index
+        left_width = dp[left_colspan][left_index].keys.first
+
+        right_colspan = colspan - left_colspan
+        right_index = index + offset
+        right_width = dp[right_colspan][right_index].keys.first
+
+        # distribute remainder.
+        remainder = full_width - left_width - right_width - space_width
+        left_additional_width = right_additional_width = remainder / 2
+        remainder %= 2
+
+        # STDERR.puts "DBG #{left_width} ? #{right_width}"
+
+        if left_width < right_width
+          right_additional_width += remainder
+        else
+          left_additional_width += remainder
+        end
+
+        # run next round.
+        resolve.call(left_colspan, left_index, left_additional_width)
+        resolve.call(right_colspan, right_index, right_additional_width)
+      end
+
+      resolve.call(n_cols)
     end
 
     ##
