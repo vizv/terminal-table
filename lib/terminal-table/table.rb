@@ -38,7 +38,7 @@ module Terminal
     def add_row array
       row = array == :separator ? Separator.new(self) : Row.new(self, array)
       @rows << row
-      # STDERR.puts "\nDBG: add row - #{array.pretty_inspect}"
+      STDERR.puts "\nDBG: add row - #{array.pretty_inspect}"
       recalc_column_widths row end
     alias :<< :add_row
 
@@ -269,13 +269,13 @@ module Terminal
         end
       end
 
-      resolve = -> (colspan, index = 0, additional_width = 0) do
-        # STDERR.puts "DBG resolve: #{colspan}, #{index}"
+      resolve = -> (colspan, index = 0, full_width = nil) do
+        STDERR.puts "DBG resolve: #{colspan}, #{index}"
         current = dp[colspan][index]
-        full_width = current.keys.first + additional_width
+        full_width = current.keys.first if full_width.nil?
 
         # stop if reaches the bottom level.
-        # STDERR.puts "DBG result: #{index}: #{full_width}" if colspan == 1
+        STDERR.puts "DBG result: #{index}: #{full_width}" if colspan == 1
         return @column_widths[index] = full_width if colspan == 1
 
         # choose best split offset for partition, or second best result
@@ -292,23 +292,39 @@ module Terminal
         right_colspan = colspan - left_colspan
         right_index = index + offset
         right_width = dp[right_colspan][right_index].keys.first
+        STDERR.puts "DBG: initial\t- L #{left_width} / R #{right_width}"
 
-        # distribute remainder.
-        remainder = full_width - left_width - right_width - space_width
-        left_additional_width = right_additional_width = remainder / 2
-        remainder %= 2
+        # calculate reference column width, give remaining spaces to left.
+        total_non_space_width = full_width - (colspan - 1) * space_width
+        ref_column_width = total_non_space_width / colspan
+        remainder = total_non_space_width % colspan
+        rem_left_width = [remainder, left_colspan].min
+        rem_right_width = remainder - rem_left_width
+        ref_left_width = ref_column_width * left_colspan +
+                         (left_colspan - 1) * space_width + rem_left_width
+        ref_right_width = ref_column_width * right_colspan +
+                          (right_colspan - 1) * space_width + rem_right_width
+        STDERR.puts "DBG: ref\t- L #{ref_left_width} / R #{ref_right_width}"
 
-        # STDERR.puts "DBG #{left_width} ? #{right_width}"
-
-        if left_width < right_width
-          right_additional_width += remainder
+        # at most one width can be greater than the reference width.
+        if left_width <= ref_left_width and right_width <= ref_right_width
+          # use refernce width (evenly partition).
+          left_width = ref_left_width
+          right_width = ref_right_width
         else
-          left_additional_width += remainder
+          # the wider one takes its value, shorter one takes the rest.
+          if left_width > ref_left_width
+            right_width = full_width - left_width - space_width
+          else
+            left_width = full_width - right_width - space_width
+          end
         end
 
+        STDERR.puts "DBG: final\t- L #{left_width} / R #{right_width}"
+
         # run next round.
-        resolve.call(left_colspan, left_index, left_additional_width)
-        resolve.call(right_colspan, right_index, right_additional_width)
+        resolve.call(left_colspan, left_index, left_width)
+        resolve.call(right_colspan, right_index, right_width)
       end
 
       resolve.call(n_cols)
