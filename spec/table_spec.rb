@@ -177,6 +177,42 @@ module Terminal
       EOF
     end
 
+    it "should render correctly after style changes" do
+      @table.headings = ['Foo', 'Bar']
+      @table << ['a', 1]
+      @table << ['b', 2]
+      @table << ['c', 3]
+      @table.render.should == <<-EOF.deindent
+        +-----+-----+
+        | Foo | Bar |
+        +-----+-----+
+        | a   | 1   |
+        | b   | 2   |
+        | c   | 3   |
+        +-----+-----+
+      EOF
+      @table.style.border_x = 'x'
+      @table.style.border_y = 'y'
+      @table.style.border_i = 'i'
+      @table.style.padding_left = 3
+      @table.style.padding_right = 2
+      @table.style.margin_left = '> '
+      @table.style.width = 30
+      @table.style.alignment = :right
+      @table.style.all_separators = true
+      @table.render.should == <<-EOF.deindent
+        > ixxxxxxxxxxxxxxixxxxxxxxxxxxxi
+        > y         Foo  y        Bar  y
+        > ixxxxxxxxxxxxxxixxxxxxxxxxxxxi
+        > y           a  y          1  y
+        > ixxxxxxxxxxxxxxixxxxxxxxxxxxxi
+        > y           b  y          2  y
+        > ixxxxxxxxxxxxxxixxxxxxxxxxxxxi
+        > y           c  y          3  y
+        > ixxxxxxxxxxxxxxixxxxxxxxxxxxxi
+      EOF
+    end
+
     it "should raise an error if the table width exceeds style width" do
       @table.headings = ['Char', 'Num']
       @table << ['a', 1]
